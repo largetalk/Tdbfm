@@ -1,3 +1,11 @@
 only for listen douban fm in terminal
 
 --show play status in tmux status bar
+
+install option:
+
+    make install
+
+uninstall option:
+
+    make clean
