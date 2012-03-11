@@ -1,9 +1,9 @@
-import gevent
-from gevent import monkey; monkey.patch_socket()
+#import gevent
+#from gevent import monkey; monkey.patch_socket()
 import urllib2
 import yajl
 import os, socket
-from multiprocessing import Process, Queue, Value, Array
+#from multiprocessing import Process, Queue, Value, Array
 
 sock_file = '/tmp/dbfm.sock'
 
@@ -24,24 +24,30 @@ def down_playlist():
     pl_f.close()
     return pl['song']
 
-def bind_socket(status=None):
+def bind_socket():
     current_status = 'init'
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.bind(sock_file)
-        s.listen(3)
+        s.listen(5)
         while True:
             conn, addr = s.accept()
-            data = conn.recv(1024)
-            if data == 'get':
-                conn.sendall(current_status.encode('utf-8'))
-            elif data.startswith('set'):
-                current_status = data.split(':')[1]
-        conn.close
+            try:
+                conn.settimeout(5)
+                data = conn.recv(1024)
+                if data == 'get':
+                    conn.send(current_status)
+                elif data.startswith('set'):
+                    current_status = data.split(':')[1]
+                    conn.send('OK')
+            except socket.timeout:
+                pass
+                #print 'time out'
+            conn.close
     finally:
         os.unlink(sock_file)
 
-def play_muc(status=None):
+def play_muc():
     while True:
         pl = down_playlist()
         for song in pl:
@@ -50,20 +56,22 @@ def play_muc(status=None):
                 down_mp3(s_url, s_ssid)
                 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 s.connect(sock_file)
-                s.sendall("set:%s"%s_title)
+                s.send("set:%s"%s_title.encode('utf-8'))
+                data = s.recv(1024)
                 s.close()
                 mplay_mp3(s_ssid)
                 #print s_url, s_ssid, s_title
             except BaseException as e:
+                #print e
                 continue
 
 def cli_socket():
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(sock_file)
-    s.sendall("get")
-    data = s.recv(1024)
+    s.send("get")
+    data = s.recv(1024, 0)
     s.close()
-    print data
+    print '[%s]'%data
 
 def main():
     if os.path.exists(sock_file):
@@ -84,5 +92,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+#    play_muc()
     
 
