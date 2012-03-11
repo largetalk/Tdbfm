@@ -1,7 +1,12 @@
 import gevent
+from gevent import monkey; monkey.patch_all()
 import urllib2
 import yajl
-import os
+import os, socket
+from multiprocessing import Process, Queue, Value, Array
+
+sock_file = '/tmp/dbfm.sock'
+current_status = 'init'
 
 def down_mp3(url, ssid):
     fu = urllib2.urlopen(url)
@@ -20,17 +25,61 @@ def down_playlist():
     pl_f.close()
     return pl['song']
 
+def bind_socket(status=None):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.bind(sock_file)
+        s.listen(3)
+        while True:
+            conn, addr = s.accept()
+            data = conn.recv(1024)
+            #if not data: break
+            #conn.sendall(status.value.encode('utf-8'))
+            conn.sendall(current_status.encode('utf-8'))
+        conn.close
+    finally:
+        os.unlink(sock_file)
 
-def main():
+def play_muc(status=None):
+    global current_status
     pl = down_playlist()
     for song in pl:
         try:
-            s_url, s_ssid = song['url'], song['ssid']
-            print s_url, s_ssid
+            s_url, s_ssid, s_title = song['url'], song['ssid'], song['title']
+            down_mp3(s_url, s_ssid)
+            #status.value = s_title
+            current_status = s_title
+            mplay_mp3(s_ssid)
+            #print s_url, s_ssid, s_title
         except BaseException as e:
             continue
-        down_mp3(s_url, s_ssid)
-        mplay_mp3(s_ssid)
+
+def cli_socket():
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.connect(sock_file)
+    s.sendall("hello world")
+    data = s.recv(1024)
+    s.close()
+    print data
+
+def main():
+    if os.path.exists(sock_file):
+        cli_socket()
+        return 'Tks God'
+    pid = os.fork()
+    if pid:
+        return 'init'
+
+
+#    status = Array('c', 20)
+#    p1  = Process(target=bind_socket, args=(status,))
+#    p1.start()
+#
+#    play_muc(status)
+ 
+    g2 = gevent.spawn(play_muc)
+    g1 = gevent.spawn(bind_socket)
+    gevent.joinall([g1, g2])
 
 if __name__ == '__main__':
     main()
